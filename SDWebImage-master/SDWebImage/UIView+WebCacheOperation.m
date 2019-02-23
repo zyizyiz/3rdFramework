@@ -19,10 +19,12 @@ typedef NSMapTable<NSString *, id<SDWebImageOperation>> SDOperationsDictionary;
 
 - (SDOperationsDictionary *)sd_operationDictionary {
     @synchronized(self) {
+        // 获取关联对象,如果已经关联过对象，则直接返回
         SDOperationsDictionary *operations = objc_getAssociatedObject(self, &loadOperationKey);
         if (operations) {
             return operations;
         }
+        // NSMapTable 弱引用
         operations = [[NSMapTable alloc] initWithKeyOptions:NSPointerFunctionsStrongMemory valueOptions:NSPointerFunctionsWeakMemory capacity:0];
         objc_setAssociatedObject(self, &loadOperationKey, operations, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return operations;
@@ -46,7 +48,7 @@ typedef NSMapTable<NSString *, id<SDWebImageOperation>> SDOperationsDictionary;
         // Cancel in progress downloader from queue
         SDOperationsDictionary *operationDictionary = [self sd_operationDictionary];
         id<SDWebImageOperation> operation;
-        
+        // 加锁
         @synchronized (self) {
             operation = [operationDictionary objectForKey:key];
         }

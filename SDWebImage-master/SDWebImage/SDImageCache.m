@@ -483,6 +483,7 @@
 - (nullable UIImage *)diskImageForKey:(nullable NSString *)key data:(nullable NSData *)data options:(SDImageCacheOptions)options {
     if (data) {
         UIImage *image = [[SDWebImageCodersManager sharedInstance] decodedImageWithData:data];
+        // 图片格式压缩
         image = [self scaledImageForKey:key image:image];
         if (self.config.shouldDecompressImages) {
             BOOL shouldScaleDown = options & SDImageCacheScaleDownLargeImages;
@@ -511,6 +512,7 @@
     }
     
     // First check the in-memory cache...
+    // 首先从内存中根据key查找图片
     UIImage *image = [self imageFromMemoryCacheForKey:key];
     BOOL shouldQueryMemoryOnly = (image && !(options & SDImageCacheQueryDataWhenInMemory));
     if (shouldQueryMemoryOnly) {
@@ -528,6 +530,7 @@
         }
         
         @autoreleasepool {
+            // 从磁盘找到图片的二进制数据
             NSData *diskData = [self diskImageDataBySearchingAllPathsForKey:key];
             UIImage *diskImage;
             SDImageCacheType cacheType = SDImageCacheTypeNone;
@@ -538,9 +541,11 @@
             } else if (diskData) {
                 cacheType = SDImageCacheTypeDisk;
                 // decode image data only if in-memory cache missed
+                // 将从磁盘找到的图片数据进行转换
                 diskImage = [self diskImageForKey:key data:diskData options:options];
                 if (diskImage && self.config.shouldCacheImagesInMemory) {
                     NSUInteger cost = diskImage.sd_memoryCost;
+                    // 将图片储存在内存中
                     [self.memCache setObject:diskImage forKey:key cost:cost];
                 }
             }
@@ -616,11 +621,12 @@
 }
 
 #pragma mark - Cache clean Ops
-
+// 清空内存中的所有图片
 - (void)clearMemory {
     [self.memCache removeAllObjects];
 }
 
+// 清空磁盘中的所有图片
 - (void)clearDiskOnCompletion:(nullable SDWebImageNoParamsBlock)completion {
     dispatch_async(self.ioQueue, ^{
         [self.fileManager removeItemAtPath:self.diskCachePath error:nil];
@@ -641,6 +647,7 @@
     [self deleteOldFilesWithCompletionBlock:nil];
 }
 
+// 删除旧文件
 - (void)deleteOldFilesWithCompletionBlock:(nullable SDWebImageNoParamsBlock)completionBlock {
     dispatch_async(self.ioQueue, ^{
         NSURL *diskCacheURL = [NSURL fileURLWithPath:self.diskCachePath isDirectory:YES];
@@ -668,14 +675,15 @@
                                                                       options:NSDirectoryEnumerationSkipsHiddenFiles
                                                                  errorHandler:NULL];
 
+        // 过期时间
         NSDate *expirationDate = [NSDate dateWithTimeIntervalSinceNow:-self.config.maxCacheAge];
         NSMutableDictionary<NSURL *, NSDictionary<NSString *, id> *> *cacheFiles = [NSMutableDictionary dictionary];
         NSUInteger currentCacheSize = 0;
 
         // Enumerate all of the files in the cache directory.  This loop has two purposes:
         //
-        //  1. Removing files that are older than the expiration date.
-        //  2. Storing file attributes for the size-based cleanup pass.
+        //  1. Removing files that are older than the expiration date.  删除过期的文件
+        //  2. Storing file attributes for the size-based cleanup pass. 基于存储文件属性的大小的清理。根据时间远近删除到最大缓存量的一半
         NSMutableArray<NSURL *> *urlsToDelete = [[NSMutableArray alloc] init];
         for (NSURL *fileURL in fileEnumerator) {
             NSError *error;
@@ -705,6 +713,7 @@
 
         // If our remaining disk cache exceeds a configured maximum size, perform a second
         // size-based cleanup pass.  We delete the oldest files first.
+        // 如果currentCacheSize大于最大缓存量时，删除到最大缓存量的一半
         if (self.config.maxCacheSize > 0 && currentCacheSize > self.config.maxCacheSize) {
             // Target half of our maximum cache size for this cleanup pass.
             const NSUInteger desiredCacheSize = self.config.maxCacheSize / 2;
